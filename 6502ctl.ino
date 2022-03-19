@@ -80,6 +80,11 @@ static inline void write_dbus(uint8_t v)
     P6502_DBUS(DDR) = 0xff;
     P6502_DBUS(PORT) = v;
 }
+static inline void tristate_dbus()
+{
+    /* tristate ATmega port designated for 6502 data bus (DBUS) */
+    P6502_DBUS(DDR) = 0;
+}
 
 /* 6502 control */
 static inline void setup_ictl()
@@ -141,14 +146,14 @@ static void reset()
 #define RAMMASK                         (RAMSIZE - 1)
 #define ROMSIZE                         (16 * 1024)
 #define ROMMASK                         (ROMSIZE - 1)
-#define RAMADDR(a)                      ((a) < 0x8000)
-#define MIOADDR(a)                      ((a) < 128)
+#define RAMADDR(a)                      ((a) < 0x1000)
+#define ROMADDR(a)                      ((a) >= 0xC000)
+
 static uint8_t ram[RAMSIZE];
 static const uint8_t rom[ROMSIZE] PROGMEM =
 {
     #include "6502rom.h"
 };
-static void write_mio(uint16_t addr, uint8_t data);
 static inline uint8_t read_data(uint16_t addr)
 {
     if (RAMADDR(addr))
@@ -158,50 +163,8 @@ static inline uint8_t read_data(uint16_t addr)
 }
 static inline void write_data(uint16_t addr, uint8_t data)
 {
-    if (MIOADDR(addr))
-        write_mio(addr, data);
-    else
+    if (RAMADDR(addr))
         ram[addr & RAMMASK] = data;
-}
-
-/* memory mapped I/O */
-#define MIO_IRQN                        (0)
-#define MIO_OREG                        (64)
-#define MIO_OREGSIZE                    (32)
-#define MIO_OREGMASK                    (MIO_OREGSIZE - 1)
-#define MIO_IREG                        (96)
-#define MIO_IREGSIZE                    (32)
-#define MIO_IREGMASK                    (MIO_IREGSIZE - 1)
-static void write_mio(uint16_t addr, uint8_t data)
-{
-    switch (addr)
-    {
-    case MIO_IRQN:
-        if (0 == data)
-        {
-            ram[addr] = data;
-            write_ictl(P6502_ICTL_PIN(IRQB), 0xff);
-        }
-        break;
-    case MIO_OREG:
-        ram[addr] = data;
-        if (0 != data)
-        {
-            sei();
-            Serial.write(ram + MIO_OREG + 1, data & MIO_OREGMASK);
-            cli();
-            ram[MIO_OREG] = 0;
-            ram[MIO_IRQN] = MIO_OREG;
-            write_ictl(P6502_ICTL_PIN(IRQB), 0);
-        }
-        break;
-    case MIO_IREG:
-        ram[addr] = data;
-        break;
-    default:
-        ram[addr] = data;
-        break;
-    }
 }
 
 /* debug */
@@ -334,16 +297,21 @@ void loop()
         addr = read_abus();
         if (octl & P6502_OCTL_PIN(RWB))
         {
-            data = read_data(addr);
-            write_dbus(data);
+            if ((RAMADDR(addr)) || ROMADDR(addr))
+            {
+              data = read_data(addr);
+              write_dbus(data);
+            }
+            else
+            {
+              data = read_dbus();
+            }
         }
         else
         {
             data = read_dbus();
             write_data(addr, data);
         }
-
-        clock_fall();
 
         if (debug_available())
         {
@@ -352,5 +320,8 @@ void loop()
         }
         else
             TMSR_LOOP(time);
+        tristate_dbus();
+        clock_fall();
     }
+
 }
