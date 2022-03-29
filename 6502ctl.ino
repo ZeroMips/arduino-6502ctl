@@ -144,10 +144,10 @@ static void reset()
 /* data read/write */
 #define RAMSIZE                         (4 * 1024)
 #define RAMMASK                         (RAMSIZE - 1)
-#define ROMSIZE                         (16 * 1024)
+#define ROMSIZE                         (24 * 1024)
 #define ROMMASK                         (ROMSIZE - 1)
 #define RAMADDR(a)                      ((a) < 0x1000)
-#define ROMADDR(a)                      ((a) >= 0xC000)
+#define ROMADDR(a)                      ((a) >= 0xA000)
 
 static uint8_t ram[RAMSIZE];
 static const uint8_t rom[ROMSIZE] PROGMEM =
@@ -159,7 +159,7 @@ static inline uint8_t read_data(uint16_t addr)
     if (RAMADDR(addr))
         return ram[addr & RAMMASK];
     else
-        return pgm_read_byte(&rom[addr & ROMMASK]);
+        return pgm_read_byte(&rom[addr - 0xA000]);
 }
 static inline void write_data(uint16_t addr, uint8_t data)
 {
