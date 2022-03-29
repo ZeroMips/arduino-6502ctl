@@ -169,16 +169,18 @@ static inline void write_data(uint16_t addr, uint8_t data)
 
 /* debug */
 static bool debug_step = 1;
+static uint16_t go_until = 0xffff;
 size_t disasm(uint8_t (*read_data)(uint16_t), uint16_t addr, char buf[16]);
 static void debug_header()
 {
     Serial.begin(1000000);
     Serial.println();
     Serial.println("6502ctl:");
-    Serial.println("    s to step");
-    Serial.println("    c to continue");
-    Serial.println("    b to break");
-    Serial.println("    r to reset");
+    Serial.println("    s       to step");
+    Serial.println("    c       to continue");
+    Serial.println("    a[addr] to continue until addr is accessed");
+    Serial.println("    b       to break");
+    Serial.println("    r       to reset");
 }
 static void debug(uint16_t addr, uint8_t data, uint8_t octl)
 {
@@ -215,6 +217,10 @@ static void debug(uint16_t addr, uint8_t data, uint8_t octl)
     while (debug_step || Serial.available())
     {
         int c;
+        int charsRead;
+        char buf[40];
+        char input[3];
+
         while (-1 == (c = Serial.read()))
             ;
         switch (c)
@@ -236,6 +242,14 @@ static void debug(uint16_t addr, uint8_t data, uint8_t octl)
                 debug_step = true;
                 goto exit;
             }
+            break;
+        case 'a': /* go until address accessed */
+            charsRead = Serial.readBytesUntil('\n', input, 4);
+            input[charsRead] = '\0';
+            go_until = strtol(input, 0, 16);
+            debug_step = false;
+            sprintf(buf, "go until addr %x is accessed", go_until);
+            Serial.println(buf);
             break;
         case 'r': /* reset */
             reset();
@@ -312,6 +326,15 @@ void loop()
             data = read_dbus();
             write_data(addr, data);
         }
+
+        if ((go_until != 0xffff) && (go_until==addr))
+         {
+            data = read_data(addr);
+            write_dbus(data);
+            debug_step = true;
+            Serial.println("address accessed");
+            go_until = 0xffff;
+         }
 
         if (debug_available())
         {
